@@ -1,0 +1,15 @@
+# Ignore real Excel files
+*.xlsx
+*.xls
+*.csv
+
+# Allow example Excel files
+!examples/*.xlsx
+
+# Python cache
+__pycache__/
+*.pyc
+
+# System files
+Thumbs.db
+.DS_Store
