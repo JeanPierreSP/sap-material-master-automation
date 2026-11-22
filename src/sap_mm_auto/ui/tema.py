@@ -10,7 +10,7 @@ así que un cambio de color que lo rompa no pasa las pruebas.
 
 from __future__ import annotations
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget
 
 # --- Paleta -----------------------------------------------------------------
@@ -64,6 +64,15 @@ ANCHO_CONTENIDO = 1040  # ancho máximo de la columna central
 
 FAMILIAS = ["Segoe UI", "Inter", "Noto Sans", "DejaVu Sans"]
 FAMILIAS_MONO = ["Cascadia Mono", "Consolas", "DejaVu Sans Mono", "monospace"]
+
+
+def familia_mono() -> str:
+    """La primera monoespaciada instalada: la hoja de estilo de Qt acepta una sola familia."""
+    instaladas = set(QFontDatabase.families())
+    for familia in FAMILIAS_MONO[:-1]:
+        if familia in instaladas:
+            return familia
+    return QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
 
 
 def fuente(tam: float = 10, peso: QFont.Weight = QFont.Weight.Normal, mono: bool = False) -> QFont:
@@ -161,10 +170,10 @@ QFrame[rol="segmentos"] {{ background: {SUPERFICIE}; border: 1px solid {BORDE_CO
 /* Pestañas de procesos */
 QPushButton[variante="pestana"] {{
     background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 0;
-    color: {TINTA_2}; padding: 8px 4px; margin-right: 18px; font-size: 14px;
+    color: {TINTA_2}; padding: 8px 4px; margin-right: 18px; font-size: 14px; font-weight: 600;
 }}
 QPushButton[variante="pestana"]:hover {{ color: {TINTA}; }}
-QPushButton[variante="pestana"]:checked {{ color: {TINTA}; font-weight: 600; border-bottom-color: {MARCA}; }}
+QPushButton[variante="pestana"]:checked {{ color: {TINTA}; border-bottom-color: {MARCA}; }}
 
 /* Campos */
 QLineEdit {{
@@ -182,6 +191,7 @@ QListWidget::item:hover:!selected {{ background: {SUPERFICIE_2}; }}
 QPlainTextEdit#log {{
     background: {SUPERFICIE}; border: 1px solid {BORDE}; border-radius: {RADIO}px; padding: 10px;
     color: {TINTA}; selection-background-color: {MARCA_SUAVE}; selection-color: {TINTA};
+    font-family: "{familia_mono()}"; font-size: 12px;
 }}
 
 /* Tablas */

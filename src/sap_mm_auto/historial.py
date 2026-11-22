@@ -56,7 +56,7 @@ class Corrida:
     def resumen(self) -> str:
         partes = [f"{self.ok} OK"]
         if self.omitidas:
-            partes.append(f"{self.omitidas} omitidas")
+            partes.append(omitidas(self.omitidas))
         if self.errores:
             partes.append(f"{self.errores} con error")
         if self.detenido:
@@ -150,6 +150,10 @@ def leer_log(corrida: Corrida, max_lineas: int | None = None) -> str:
     if max_lineas is not None:
         texto = "\n".join(texto.splitlines()[-max_lineas:])
     return texto
+
+
+def omitidas(n: int) -> str:
+    return f"{n} omitida{'s' if n != 1 else ''}"
 
 
 def texto_duracion(segundos: float) -> str:
