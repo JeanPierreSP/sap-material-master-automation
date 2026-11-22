@@ -10,7 +10,7 @@ así que un cambio de color que lo rompa no pasa las pruebas.
 
 from __future__ import annotations
 
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 # --- Paleta -----------------------------------------------------------------
@@ -85,6 +85,10 @@ def fuente(tam: float = 10, peso: QFont.Weight = QFont.Weight.Normal, mono: bool
 
 def aplicar(app: QApplication) -> None:
     app.setFont(fuente())
+    paleta = app.palette()
+    # El texto de ejemplo de los campos no se puede fijar en la hoja: va por la paleta
+    paleta.setColor(QPalette.ColorRole.PlaceholderText, QColor(TINTA_3))
+    app.setPalette(paleta)
     app.setStyleSheet(hoja())
 
 

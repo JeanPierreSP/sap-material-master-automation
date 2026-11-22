@@ -72,3 +72,9 @@ def test_ctrl_k_abre_el_buscador(ventana, app):
 def test_historial_desde_la_barra(ventana):
     ventana.barra.historial.click()
     assert ventana.actual == "historial"
+
+
+def test_texto_de_ejemplo_de_los_campos_usa_la_paleta(app):
+    from PySide6.QtGui import QPalette
+
+    assert app.palette().color(QPalette.ColorRole.PlaceholderText).name().upper() == tema.TINTA_3
