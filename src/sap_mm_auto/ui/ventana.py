@@ -1,323 +1,296 @@
-"""Interfaz de escritorio (PySide6).
+"""Ventana principal: barra superior, navegación entre pantallas y la corrida en curso.
 
-La persona elige una tarea, revisa las precondiciones y ejecuta. El avance y el log se
-ven en vivo, y la corrida se puede detener en cualquier momento. En modo demostración
-todo corre contra el SAP simulado.
+Pantallas (``ui/vistas``):
+
+    inicio  ->  maestro (pestañas por proceso)  ->  tarea (revisar, ejecutar, resultado)
+    historial, desde la barra superior o desde cualquier pantalla
+
+La ventana es dueña de la corrida en curso (a lo más una): la tarea la pide con
+``ejecutar()`` y la ventana la sigue aunque la persona navegue a otra pantalla. La barra
+superior muestra entonces su avance, y un clic ahí vuelve a la tarea.
+
+Teclado: Ctrl+K abre el buscador y Esc vuelve a la pantalla anterior.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
-import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMainWindow,
-    QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
-from .. import entrada, motor
-from ..controles import Freno, MemoriaDiaria, revisar
-from ..registro import Registro, Resumen
-from ..sesion import ErrorSAP, Pantalla, conectar_sesion_activa
-from ..simulador import SAPSimulado
+from ..entorno import Entorno, EstadoSAP
+from ..historial import Corrida
 from ..tareas import TAREAS, Tarea
+from . import glifos, piezas, tema
+from .buscador import Buscador
+from .trabajador import Corredor
+from .vistas.historial import VistaHistorial
+from .vistas.inicio import VistaInicio
+from .vistas.maestro import VistaMaestro
+from .vistas.tarea import VistaTarea
 
-RAIZ = Path(__file__).resolve().parents[3]
-EJEMPLOS = RAIZ / "datos_ejemplo"
-
-ESTILO = """
-QMainWindow, QWidget#panel { background: #f6f7f9; }
-QWidget#lateral { background: #1f2a37; }
-QLabel#marca { color: #ffffff; font-size: 15px; font-weight: 600; padding: 18px 16px 4px 16px; }
-QLabel#submarca { color: #9aa5b1; font-size: 11px; padding: 0 16px 14px 16px; }
-QListWidget#tareas { background: transparent; border: none; color: #d9dee4; font-size: 13px; outline: 0; }
-QListWidget#tareas::item { padding: 10px 16px; }
-QListWidget#tareas::item:selected { background: #2f3e4e; color: #ffffff; border-left: 3px solid #3aa0ff; }
-QLabel#titulo { font-size: 20px; font-weight: 600; color: #1f2a37; }
-QLabel#descripcion { color: #52606d; font-size: 13px; }
-QLabel#chip { background: #e3eefc; color: #1d5fa8; border-radius: 9px; padding: 2px 10px; font-size: 11px; }
-QFrame#tarjeta { background: #ffffff; border: 1px solid #e1e5ea; border-radius: 8px; }
-QLabel#cifra { font-size: 22px; font-weight: 600; color: #1f2a37; }
-QLabel#etiqueta { color: #7b8794; font-size: 11px; }
-QPushButton { border: 1px solid #cbd2d9; border-radius: 6px; padding: 7px 14px; background: #ffffff; }
-QPushButton#primario { background: #1d6fd1; color: #ffffff; border: none; font-weight: 600; }
-QPushButton#primario:disabled { background: #9fbfe6; }
-QPushButton#peligro { color: #b42318; }
-QProgressBar { border: none; background: #e1e5ea; border-radius: 4px; height: 8px; text-align: center; }
-QProgressBar::chunk { background: #1d6fd1; border-radius: 4px; }
-QPlainTextEdit { background: #111827; color: #d1d5db; border-radius: 8px; padding: 8px; }
-QLineEdit { border: 1px solid #cbd2d9; border-radius: 6px; padding: 6px 8px; background: #ffffff; }
-"""
+NOMBRE = "MM Auto"
 
 
-class _Trabajador(QObject):
-    linea = Signal(str)
-    avance = Signal(int, int, str)
-    terminado = Signal(object)
-
-    def __init__(self, tarea: Tarea, archivo: Path, demo: bool) -> None:
+class BarraSuperior(QFrame):
+    def __init__(self, ventana: "Ventana") -> None:
         super().__init__()
-        self.tarea, self.archivo, self.demo = tarea, archivo, demo
-        self._detener = False
+        self.setObjectName("barra")
+        self.setFixedHeight(64)
+        self.ventana = ventana
+        caja = piezas.fila(espacio=12, margen=0)
+        caja.setContentsMargins(20, 0, 20, 0)
+        self.setLayout(caja)
 
-    def detener(self) -> None:
-        self._detener = True
+        marca = QWidget()
+        marca.setCursor(Qt.CursorShape.PointingHandCursor)
+        marca.setToolTip("Ir al inicio")
+        marca.mousePressEvent = lambda _e: ventana.ir_al_inicio()
+        logo = QLabel()
+        logo.setPixmap(glifos.logo(30, tema.MARCA, tema.SUPERFICIE))
+        textos = piezas.columna(espacio=0)
+        nombre = QLabel(NOMBRE)
+        nombre.setObjectName("marca_nombre")
+        modo = "demostración" if ventana.entorno.demo else "SAP real"
+        sub = QLabel(f"Maestro de materiales · {modo}")
+        sub.setObjectName("marca_sub")
+        textos.addStretch(1)
+        textos.addWidget(nombre)
+        textos.addWidget(sub)
+        textos.addStretch(1)
+        caja_marca = piezas.fila(logo, espacio=10)
+        caja_marca.addLayout(textos)
+        marca.setLayout(caja_marca)
+        caja.addWidget(marca)
+        caja.addSpacing(24)
 
-    def correr(self) -> None:
-        try:
-            sesion = SAPSimulado(retardo=0.06) if self.demo else conectar_sesion_activa()
-            carpeta = Path(tempfile.mkdtemp(prefix="demo_")) if self.demo else Path.home() / "sap_mm_auto" / "registro"
-            resumen = motor.ejecutar(
-                self.tarea,
-                entrada.leer_filas(self.archivo),
-                Pantalla(sesion),
-                MemoriaDiaria(carpeta),
-                Registro(carpeta, self.tarea.id, al_escribir=self.linea.emit),
-                Freno(),
-                al_avanzar=self.avance.emit,
-                detener_solicitado=lambda: self._detener,
-            )
-        except (ErrorSAP, OSError, ValueError) as exc:
-            self.linea.emit(f"No se pudo ejecutar: {exc}")
-            resumen = Resumen(detenido=True, motivo=str(exc))
-        self.terminado.emit(resumen)
+        self.campo_buscar = piezas.boton("", None)
+        self.campo_buscar.setObjectName("campo_buscar")
+        self.campo_buscar.setAccessibleName("Buscar tarea o maestro (Ctrl+K)")
+        self.campo_buscar.setMinimumWidth(300)
+        self.campo_buscar.setMaximumWidth(460)
+        self.campo_buscar.setFixedHeight(38)
+        icono = QLabel()
+        icono.setPixmap(glifos.pixmap("buscar", tema.TINTA_3, 16))
+        tecla = QLabel("Ctrl K")
+        tecla.setObjectName("tecla")
+        tecla.setFixedHeight(20)
+        dentro = piezas.fila(icono, piezas.etiqueta("Buscar tarea o maestro", "rotulo"), None, espacio=8)
+        dentro.addWidget(tecla, 0, Qt.AlignmentFlag.AlignVCenter)
+        dentro.setContentsMargins(12, 0, 10, 0)
+        self.campo_buscar.setLayout(dentro)
+        self.campo_buscar.clicked.connect(ventana.abrir_buscador)
+        caja.addWidget(self.campo_buscar, 1)
+        caja.addStretch(1)
+
+        self.corrida = piezas.boton("", "texto", "play", tema.MARCA)
+        self.corrida.setToolTip("Volver a la tarea en curso")
+        self.corrida.hide()
+        caja.addWidget(self.corrida)
+
+        self.historial = piezas.boton("Historial", "texto", "historial", tema.MARCA_FUERTE)
+        self.historial.clicked.connect(lambda: ventana.abrir_historial())
+        caja.addWidget(self.historial)
+
+        self.sap_punto = piezas.Punto("neutro")
+        self.sap_texto = piezas.etiqueta("SAP…", "rotulo")
+        sap = QWidget()
+        sap.setLayout(piezas.fila(self.sap_punto, self.sap_texto, espacio=6))
+        caja.addWidget(sap)
+
+    def poner_sap(self, conectado: bool, texto: str) -> None:
+        self.sap_punto.poner("ok" if conectado else "error")
+        self.sap_texto.setText(texto)
+        self.sap_texto.setAccessibleName(f"Estado de SAP: {texto}")
+
+    def poner_corrida(self, texto: str | None) -> None:
+        self.corrida.setVisible(bool(texto))
+        if texto:
+            self.corrida.setText(texto)
 
 
 class Ventana(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, entorno: Entorno | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("SAP MM Automation · demostración")
-        self.resize(1040, 660)
-        self._hilo: QThread | None = None
-        self._trabajador: _Trabajador | None = None
+        self.entorno = entorno or Entorno(demo=True, con_ejemplos=True, retardo=0.25)
+        self.setWindowTitle(f"{NOMBRE} · demostración" if self.entorno.demo else NOMBRE)
+        self.setWindowIcon(glifos.logo(64, tema.MARCA, tema.SUPERFICIE))
+        self.resize(1280, 820)
 
         raiz = QWidget()
-        fila = QHBoxLayout(raiz)
-        fila.setContentsMargins(0, 0, 0, 0)
-        fila.setSpacing(0)
-        fila.addWidget(self._lateral())
-        fila.addWidget(self._panel(), 1)
+        raiz.setObjectName("raiz")
+        caja = piezas.columna(raiz, espacio=0)
+        self.barra = BarraSuperior(self)
+        caja.addWidget(self.barra)
+        self.pila = QStackedWidget()
+        caja.addWidget(self.pila, 1)
         self.setCentralWidget(raiz)
-        self.lista.setCurrentRow(0)
+        self.buscador = Buscador(self, raiz)
 
-    # --- construcción --------------------------------------------------------
-    def _lateral(self) -> QWidget:
-        lateral = QWidget(objectName="lateral")
-        lateral.setFixedWidth(240)
-        col = QVBoxLayout(lateral)
-        col.setContentsMargins(0, 0, 0, 0)
-        col.addWidget(QLabel("SAP MM Automation", objectName="marca"))
-        col.addWidget(QLabel("Maestro de materiales · RPA supervisado", objectName="submarca"))
-        self.lista = QListWidget(objectName="tareas")
-        for t in TAREAS.values():
-            item = QListWidgetItem(t.nombre)
-            item.setData(Qt.UserRole, t.id)
-            self.lista.addItem(item)
-        self.lista.currentItemChanged.connect(self._al_elegir)
-        col.addWidget(self.lista, 1)
-        return lateral
+        self._vistas: dict[str, QWidget] = {}
+        self._atras: list[str] = []
+        self.actual = ""
+        self.corredor: Corredor | None = None
+        self._tarea_en_curso: Tarea | None = None
+        self.barra.corrida.clicked.connect(self._volver_a_la_corrida)
 
-    def _panel(self) -> QWidget:
-        panel = QWidget(objectName="panel")
-        col = QVBoxLayout(panel)
-        col.setContentsMargins(28, 24, 28, 24)
-        col.setSpacing(12)
+        QShortcut(QKeySequence("Ctrl+K"), self, self.abrir_buscador)
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, self._al_escape)
 
-        cabecera = QHBoxLayout()
-        self.titulo = QLabel(objectName="titulo")
-        self.chip = QLabel(objectName="chip")
-        cabecera.addWidget(self.titulo)
-        cabecera.addWidget(self.chip)
-        cabecera.addStretch()
-        col.addLayout(cabecera)
-        self.descripcion = QLabel(objectName="descripcion")
-        col.addWidget(self.descripcion)
+        self.refrescar_sap()
+        self.ir_al_inicio()
 
-        archivo = QHBoxLayout()
-        self.ruta = QLineEdit()
-        examinar = QPushButton("Examinar…")
-        examinar.clicked.connect(self._examinar)
-        archivo.addWidget(QLabel("Archivo:"))
-        archivo.addWidget(self.ruta, 1)
-        archivo.addWidget(examinar)
-        col.addLayout(archivo)
+    # --- navegación ---------------------------------------------------------------
+    def vista(self, clave: str) -> QWidget | None:
+        return self._vistas.get(clave)
 
-        self.demo = QCheckBox("Modo demostración (SAP simulado, no toca SAP)")
-        self.demo.setChecked(True)
-        self.demo.setEnabled(sys.platform == "win32")
-        col.addWidget(self.demo)
+    def _mostrar(self, clave: str, crear, recordar: bool = True) -> QWidget:
+        vista = self._vistas.get(clave)
+        if vista is None:
+            vista = crear()
+            self._vistas[clave] = vista
+            self.pila.addWidget(vista)
+        if recordar and self.actual and self.actual != clave:
+            self._atras.append(self.actual)
+        self.actual = clave
+        self.pila.setCurrentWidget(vista)
+        if hasattr(vista, "al_mostrar"):
+            vista.al_mostrar()
+        return vista
 
-        self.revisiones = QLabel()
-        self.revisiones.setTextFormat(Qt.RichText)
-        col.addWidget(self.revisiones)
+    def ir_al_inicio(self) -> None:
+        self._atras.clear()
+        self._mostrar("inicio", lambda: VistaInicio(self), recordar=False)
 
-        botones = QHBoxLayout()
-        self.btn_revisar = QPushButton("Revisar")
-        self.btn_ejecutar = QPushButton("Ejecutar", objectName="primario")
-        self.btn_detener = QPushButton("Detener", objectName="peligro")
-        self.btn_detener.setEnabled(False)
-        self.btn_revisar.clicked.connect(self._revisar)
-        self.btn_ejecutar.clicked.connect(self._ejecutar)
-        self.btn_detener.clicked.connect(self._detener)
-        for b in (self.btn_revisar, self.btn_ejecutar, self.btn_detener):
-            botones.addWidget(b)
-        botones.addStretch()
-        col.addLayout(botones)
+    def abrir_maestro(self, maestro_id: str, proceso_id: str | None = None) -> VistaMaestro:
+        vista = self._mostrar(f"maestro:{maestro_id}", lambda: VistaMaestro(self, maestro_id))
+        if proceso_id:
+            vista.elegir(proceso_id)
+        return vista
 
-        self.progreso = QProgressBar()
-        self.progreso.setTextVisible(False)
-        self.texto_progreso = QLabel("Listo para ejecutar", objectName="etiqueta")
-        col.addWidget(self.progreso)
-        col.addWidget(self.texto_progreso)
+    def abrir_tarea(self, tarea_id: str) -> VistaTarea:
+        return self._mostrar(f"tarea:{tarea_id}", lambda: VistaTarea(self, TAREAS[tarea_id]))
 
-        tarjetas = QHBoxLayout()
-        self.cifras = {}
-        for clave, nombre in (("ok", "Procesadas OK"), ("omitidas", "Omitidas (ya hechas hoy)"), ("errores", "Con error")):
-            tarjeta = QFrame(objectName="tarjeta")
-            t = QVBoxLayout(tarjeta)
-            cifra = QLabel("0", objectName="cifra")
-            t.addWidget(cifra)
-            t.addWidget(QLabel(nombre, objectName="etiqueta"))
-            self.cifras[clave] = cifra
-            tarjetas.addWidget(tarjeta)
-        col.addLayout(tarjetas)
+    def abrir_historial(self, solo_errores: bool | None = None, periodo: str | None = None) -> VistaHistorial:
+        vista = self._mostrar("historial", lambda: VistaHistorial(self))
+        vista.filtrar(solo_errores=solo_errores, periodo=periodo)
+        return vista
 
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setFont(QFont("DejaVu Sans Mono", 9))
-        col.addWidget(self.log, 1)
-        return panel
+    def volver(self) -> None:
+        while self._atras:
+            clave = self._atras.pop()
+            if clave in self._vistas:
+                self.actual = clave
+                vista = self._vistas[clave]
+                self.pila.setCurrentWidget(vista)
+                if hasattr(vista, "al_mostrar"):
+                    vista.al_mostrar()
+                return
+        self.ir_al_inicio()
 
-    # --- acciones --------------------------------------------------------------
+    def abrir_buscador(self) -> None:
+        self.buscador.abrir()
+
+    def _al_escape(self) -> None:
+        if self.buscador.isVisible():
+            self.buscador.cerrar()
+        elif self.actual != "inicio":
+            self.volver()
+
+    def resizeEvent(self, evento) -> None:
+        super().resizeEvent(evento)
+        self.buscador.ajustar()
+
+    # --- SAP ------------------------------------------------------------------------
+    def refrescar_sap(self) -> EstadoSAP:
+        estado = self.entorno.estado_sap()
+        self.barra.poner_sap(estado.conectado, estado.texto)
+        return estado
+
+    # --- la corrida en curso ----------------------------------------------------------
     @property
-    def tarea(self) -> Tarea:
-        return TAREAS[self.lista.currentItem().data(Qt.UserRole)]
+    def ocupada(self) -> bool:
+        return self.corredor is not None
 
-    def _al_elegir(self, *_: object) -> None:
-        t = self.tarea
-        self.titulo.setText(t.nombre)
-        self.chip.setText(" · ".join(t.transacciones))
-        self.descripcion.setText(f"{t.descripcion}  Columnas: {', '.join(t.columnas)}.")
-        ejemplo = EJEMPLOS / f"{t.id}.csv"
-        self.ruta.setText(str(ejemplo) if ejemplo.exists() else "")
-        self.revisiones.setText("")
-        self._reiniciar_cifras()
-
-    def _examinar(self) -> None:
-        ruta, _ = QFileDialog.getOpenFileName(self, "Archivo de entrada", str(EJEMPLOS), "Datos (*.xlsx *.csv)")
-        if ruta:
-            self.ruta.setText(ruta)
-
-    def _revisar(self) -> bool:
-        demo = self.demo.isChecked()
-
-        def sap_ok() -> bool:
-            if demo:
-                return True
-            try:
-                return Pantalla(conectar_sesion_activa()).esta_en_inicio()
-            except ErrorSAP:
-                return False
-
-        pre = revisar(Path(self.ruta.text()), self.tarea.columnas, entrada.leer_columnas, sap_ok)
-        filas = []
-        for r in pre.revisiones:
-            color, marca = ("#1a7f37", "✓") if r.ok else ("#b42318", "✗")
-            detalle = f" <span style='color:#7b8794'>· {r.detalle}</span>" if r.detalle and not r.ok else ""
-            filas.append(f"<span style='color:{color}'>{marca}</span> {r.nombre}{detalle}")
-        self.revisiones.setText("&nbsp;&nbsp;&nbsp;".join(filas))
-        return pre.todas_ok
-
-    def _ejecutar(self) -> None:
-        if not self._revisar():
-            return
-        demo = self.demo.isChecked()
-        if not demo:
+    def ejecutar(self, vista: VistaTarea, tarea: Tarea, archivo: Path, confirmar: bool = True) -> Corredor | None:
+        """Lanza la tarea. Con SAP real pregunta antes: esto modifica datos maestros."""
+        if self.corredor is not None:
+            return None
+        if confirmar and not self.entorno.demo:
             r = QMessageBox.warning(
                 self,
                 "Confirmar",
-                f"Esta corrida modificará SAP ({', '.join(self.tarea.transacciones)}). ¿Continuar?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                f"Esta corrida va a modificar SAP ({', '.join(tarea.transacciones)}).\n¿Ejecutar {tarea.nombre}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            if r != QMessageBox.Yes:
-                return
-        self._reiniciar_cifras()
-        self.log.clear()
-        self._ocupado(True)
-        self._hilo = QThread(self)
-        self._trabajador = _Trabajador(self.tarea, Path(self.ruta.text()), demo)
-        self._trabajador.moveToThread(self._hilo)
-        self._hilo.started.connect(self._trabajador.correr)
-        self._trabajador.linea.connect(self._al_linea)
-        self._trabajador.avance.connect(self._al_avance)
-        self._trabajador.terminado.connect(self._al_terminar)
-        self._hilo.start()
-
-    def _detener(self) -> None:
-        if self._trabajador:
-            self._trabajador.detener()
-            self.texto_progreso.setText("Deteniendo después de la fila actual…")
-
-    # --- señales ---------------------------------------------------------------
-    def _al_linea(self, texto: str) -> None:
-        self.log.appendPlainText(texto)
-        for clave, marca in (("ok", ": OK"), ("omitidas", ": omitida"), ("errores", ": ERROR")):
-            if marca in texto:
-                self.cifras[clave].setText(str(int(self.cifras[clave].text()) + 1))
-        if ": rechazada" in texto:
-            self.cifras["errores"].setText(str(int(self.cifras["errores"].text()) + 1))
+            if r != QMessageBox.StandardButton.Yes:
+                return None
+        corredor = Corredor(self.entorno, tarea, archivo)
+        # La ventana se entera primero: así, cuando la tarea recibe el fin, ya no hay corrida
+        # en curso y el flujo automático puede lanzar el paso siguiente.
+        corredor.avance.connect(self._al_avance)
+        corredor.terminado.connect(self._al_terminar)
+        corredor.linea.connect(vista.al_linea)
+        corredor.avance.connect(vista.al_avance)
+        corredor.fila.connect(vista.al_fila)
+        corredor.terminado.connect(vista.al_terminar)
+        self.corredor, self._tarea_en_curso = corredor, tarea
+        self.barra.poner_corrida(f"{tarea.nombre} · empezando")
+        corredor.lanzar(self)
+        return corredor
 
     def _al_avance(self, actual: int, total: int, clave: str) -> None:
-        self.progreso.setMaximum(max(total, 1))
-        self.progreso.setValue(actual if not clave else actual - 1)
-        if clave:
-            self.texto_progreso.setText(f"{actual} de {total} · {clave}")
+        if self._tarea_en_curso and clave:
+            self.barra.poner_corrida(f"{self._tarea_en_curso.nombre} · {actual} de {total}")
 
-    def _al_terminar(self, resumen: Resumen) -> None:
-        self._ocupado(False)
-        self.progreso.setValue(self.progreso.maximum())
-        if resumen.detenido:
-            self.texto_progreso.setText(f"Detenida: {resumen.motivo}")
-        else:
-            self.texto_progreso.setText(f"Terminada: {resumen.ok} OK · {resumen.omitidas} omitidas · {resumen.errores} con error")
-        if self._hilo:
-            self._hilo.quit()
-            self._hilo.wait()
+    def _al_terminar(self, _corrida: Corrida) -> None:
+        if self.corredor:
+            self.corredor.esperar()
+        self.corredor, self._tarea_en_curso = None, None
+        self.barra.poner_corrida(None)
 
-    def _ocupado(self, si: bool) -> None:
-        self.btn_ejecutar.setEnabled(not si)
-        self.btn_revisar.setEnabled(not si)
-        self.btn_detener.setEnabled(si)
-        self.lista.setEnabled(not si)
+    def _volver_a_la_corrida(self) -> None:
+        if self._tarea_en_curso:
+            self.abrir_tarea(self._tarea_en_curso.id)
 
-    def _reiniciar_cifras(self) -> None:
-        for cifra in self.cifras.values():
-            cifra.setText("0")
-        self.progreso.setValue(0)
-        self.texto_progreso.setText("Listo para ejecutar")
+    def closeEvent(self, evento: QCloseEvent) -> None:
+        if self.corredor is not None:
+            r = QMessageBox.question(
+                self,
+                "Corrida en curso",
+                "Hay una corrida en curso. ¿Detenerla después de la fila actual y salir?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if r != QMessageBox.StandardButton.Yes:
+                evento.ignore()
+                return
+            self.corredor.detener()
+            self.corredor.esperar()
+        evento.accept()
 
 
-def main() -> int:
-    app = QApplication(sys.argv)
-    app.setStyleSheet(ESTILO)
-    ventana = Ventana()
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="python -m sap_mm_auto.ui", description="Interfaz de escritorio")
+    p.add_argument("--sap", action="store_true", help="Usa la sesión abierta de SAP GUI (Windows) en vez del simulado")
+    p.add_argument("--carpeta", type=Path, help="Dónde guardar logs, memoria e historial")
+    args = p.parse_args(argv)
+
+    if args.sap and sys.platform != "win32":
+        print("--sap solo funciona en Windows con SAP GUI", file=sys.stderr)
+        return 2
+    app = QApplication.instance() or QApplication(sys.argv[:1])
+    tema.aplicar(app)
+    entorno = (
+        Entorno(demo=False, carpeta=args.carpeta)
+        if args.sap
+        else Entorno(demo=True, carpeta=args.carpeta, con_ejemplos=True, retardo=0.25)
+    )
+    ventana = Ventana(entorno)
     ventana.show()
     return app.exec()
