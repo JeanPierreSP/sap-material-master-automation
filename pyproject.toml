@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sap-mm-auto"
+version = "0.1.0"
+description = "Automatización supervisada del maestro de materiales en SAP GUI (demostración)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Jean Pierre Silverio Pantoja" }]
+requires-python = ">=3.11"
+dependencies = ["openpyxl>=3.1"]
+
+[project.optional-dependencies]
+ui = ["PySide6-Essentials>=6.6"]
+windows = ["pywin32>=306; sys_platform == 'win32'"]
+dev = ["pytest>=8", "Pillow>=10"]
+
+[project.scripts]
+sap-mm-auto = "sap_mm_auto.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

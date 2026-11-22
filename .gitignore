@@ -1,0 +1,18 @@
+# Entornos y cachés
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Salidas de las corridas (pueden contener datos reales)
+registro/
+*_rechazadas.csv
+memoria_*.json
+
+# Archivos de trabajo: los datos reales nunca se versionan
+*.xlsx
+!datos_ejemplo/*.xlsx
+~$*
