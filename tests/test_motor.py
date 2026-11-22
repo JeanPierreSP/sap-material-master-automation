@@ -65,3 +65,10 @@ def test_archivos_de_ejemplo_sin_duplicados():
     for t in TAREAS.values():
         datos = leer_filas(carpeta / f"{t.id}.csv")
         assert datos and not duplicados(datos, t.clave)
+
+
+def test_avisa_el_resultado_de_cada_fila(pantalla, memoria, registro):
+    entrada = filas(("DEMO-0001", "1000", "0002"), ("NO-EXISTE", "1000", "0002"), ("DEMO-0002", "1000", ""))
+    vistos = []
+    motor.ejecutar(tarea, entrada, pantalla, memoria, registro, al_terminar_fila=lambda *a: vistos.append(a))
+    assert vistos == [(1, "DEMO-0001|1000|0002", "ok"), (2, "NO-EXISTE|1000|0002", "error"), (3, "DEMO-0002|1000|", "error")]

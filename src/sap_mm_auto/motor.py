@@ -10,6 +10,8 @@ from .sesion import ErrorSAP, Pantalla, PantallaInesperada
 from .tareas import Fila, Tarea
 
 Progreso = Callable[[int, int, str], None]
+#: (número de fila, clave, resultado) con resultado "ok", "omitida" o "error"
+ResultadoFila = Callable[[int, str, str], None]
 
 
 def ejecutar(
@@ -21,6 +23,7 @@ def ejecutar(
     freno: Freno | None = None,
     al_avanzar: Progreso | None = None,
     detener_solicitado: Callable[[], bool] = lambda: False,
+    al_terminar_fila: ResultadoFila | None = None,
 ) -> Resumen:
     """Procesa ``filas`` una por una.
 
@@ -28,7 +31,10 @@ def ejecutar(
     - Una fila con error no detiene la corrida: queda en el archivo de rechazadas.
     - Se detiene si SAP sale de la pantalla esperada, si el mismo error se repite
       seguido o si el usuario lo pide.
+    - ``al_terminar_fila`` avisa el resultado de cada fila (la interfaz pinta con eso
+      la barra de avance) sin tener que leer el log.
     """
+    avisar = al_terminar_fila or (lambda *_: None)
     freno = freno or Freno()
     resumen = Resumen(total=len(filas))
     registro.info(f"Inicio: {tarea.nombre} · {len(filas)} filas")
@@ -48,11 +54,13 @@ def ejecutar(
             resumen.errores += 1
             registro.rechazada(dict(fila), motivo)
             registro.info(f"[{i}/{len(filas)}] {clave}: rechazada · {motivo}")
+            avisar(i, clave, "error")
             continue
 
         if memoria.ya_hecho(tarea.id, clave):
             resumen.omitidas += 1
             registro.info(f"[{i}/{len(filas)}] {clave}: omitida, ya se procesó hoy")
+            avisar(i, clave, "omitida")
             continue
 
         try:
@@ -64,12 +72,14 @@ def ejecutar(
             registro.rechazada(dict(fila), str(exc))
             freno.detener(f"Pantalla inesperada en {clave}: {exc}")
             registro.info(f"[{i}/{len(filas)}] {clave}: ERROR · {exc}")
+            avisar(i, clave, "error")
             break
         except ErrorSAP as exc:
             resumen.errores += 1
             registro.rechazada(dict(fila), str(exc))
             freno.error(str(exc))
             registro.info(f"[{i}/{len(filas)}] {clave}: ERROR · {exc}")
+            avisar(i, clave, "error")
             _intentar_volver(pantalla)
             continue
 
@@ -77,6 +87,7 @@ def ejecutar(
         freno.exito()
         resumen.ok += 1
         registro.info(f"[{i}/{len(filas)}] {clave}: OK · {mensaje}")
+        avisar(i, clave, "ok")
 
     if al_avanzar:
         al_avanzar(resumen.procesadas, len(filas), "")

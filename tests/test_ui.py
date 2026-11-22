@@ -23,6 +23,6 @@ def test_corrida_demo_desde_la_interfaz():
         time.sleep(0.02)
 
     assert v.btn_ejecutar.isEnabled(), "la corrida no terminó"
-    assert v.cifras["ok"].text() == "6"
-    assert v.cifras["errores"].text() == "2"
+    assert v.cifras["ok"].text() == "5"
+    assert v.cifras["errores"].text() == "3"
     assert "Terminada" in v.texto_progreso.text()

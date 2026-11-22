@@ -8,6 +8,15 @@ from pathlib import Path
 
 def leer_filas(archivo: Path) -> list[dict[str, str]]:
     """Lee un .xlsx o .csv y devuelve una lista de filas con columnas en mayúsculas."""
+    return [fila for _, fila in leer_filas_numeradas(archivo)]
+
+
+def leer_filas_numeradas(archivo: Path) -> list[tuple[int, dict[str, str]]]:
+    """Como ``leer_filas``, pero con el número de fila tal como se ve en Excel.
+
+    El encabezado es la fila 1. Las filas vacías se saltan sin correr la numeración,
+    para que un aviso diga la misma fila que la persona ve al abrir el archivo.
+    """
     archivo = Path(archivo)
     if archivo.suffix.lower() == ".xlsx":
         filas = _leer_xlsx(archivo)
@@ -15,8 +24,7 @@ def leer_filas(archivo: Path) -> list[dict[str, str]]:
         filas = _leer_csv(archivo)
     else:
         raise ValueError(f"Formato no soportado: {archivo.suffix} (usa .xlsx o .csv)")
-    # Sin filas vacías
-    return [f for f in filas if any(v.strip() for v in f.values())]
+    return [(n, f) for n, f in enumerate(filas, start=2) if any(v.strip() for v in f.values())]
 
 
 def leer_columnas(archivo: Path) -> list[str]:

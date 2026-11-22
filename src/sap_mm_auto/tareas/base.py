@@ -25,6 +25,8 @@ class Tarea(ABC):
     transacciones: tuple[str, ...] = ()
     #: columnas obligatorias del archivo de entrada
     columnas: tuple[str, ...] = ()
+    #: si la revisión previa avisa de materiales con status de bloqueo
+    avisar_status: bool = True
 
     def clave(self, fila: Fila) -> str:
         """Identifica la fila. Dos filas con la misma clave son el mismo trabajo."""

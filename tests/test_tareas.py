@@ -73,3 +73,30 @@ def test_pantalla_desconocida_lanza_pantalla_inesperada():
     p = Pantalla(SAPSimulado(pantalla_inesperada={"DEMO-0001"}))
     with pytest.raises(PantallaInesperada):
         ampliacion.ejecutar(p, {"MATERIAL": "DEMO-0001", "CENTRO": "1000", "ALMACEN": "0002"})
+
+
+def test_consulta_de_status_no_graba_y_vuelve_al_menu(sap, pantalla):
+    from sap_mm_auto.tareas.consultas import status_material
+
+    assert status_material(pantalla, "DEMO-0006") == "01"
+    assert status_material(pantalla, "DEMO-0001") == ""
+    assert sap.grabaciones == [] and pantalla.esta_en_inicio()
+    with pytest.raises(ErrorSAP, match="no existe"):
+        status_material(pantalla, "NO-EXISTE")
+    assert pantalla.esta_en_inicio()
+
+
+def test_mm03_no_permite_grabar(sap, pantalla):
+    from sap_mm_auto.tareas import campos
+
+    pantalla.ir_a("MM03")
+    pantalla.escribir(campos.MATERIAL, "DEMO-0001")
+    pantalla.enter()
+    pantalla.guardar()
+    assert "visualización" in pantalla.estado().texto and sap.grabaciones == []
+
+
+def test_ampliacion_rechaza_material_con_status_de_bloqueo(sap, pantalla):
+    with pytest.raises(ErrorSAP, match="status 01"):
+        ampliacion.ejecutar(pantalla, {"MATERIAL": "DEMO-0006", "CENTRO": "1000", "ALMACEN": "0002"})
+    assert sap.grabaciones == []

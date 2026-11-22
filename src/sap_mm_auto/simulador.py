@@ -9,7 +9,8 @@ Sirve para dos cosas:
 
 No pretende reproducir SAP: solo las pantallas y mensajes que necesitan las tareas,
 incluidos los errores típicos (material inexistente, bloqueado por otro usuario,
-almacén no definido) y una pantalla inesperada para probar el freno.
+material con status de bloqueo, almacén no definido) y una pantalla inesperada para
+probar el freno. MM03 permite consultar sin grabar, como en SAP.
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ def materiales_de_ejemplo() -> dict[str, Material]:
         "DEMO-0003": Material("CABLE THW 2.5 MM2 NEGRO", {("1000", "0001"), ("1000", "0002")}),
         "DEMO-0004": Material("TUERCA HEXAGONAL M8", {("1000", "0001")}),
         "DEMO-0005": Material("GUANTE DE NITRILO TALLA M", {("1000", "0001")}),
-        "DEMO-0006": Material("CINTA AISLANTE 19 MM", {("1000", "0001")}),
+        # Con status de bloqueo desde el inicio: la revisión previa lo avisa y MM01 lo rechaza
+        "DEMO-0006": Material("CINTA AISLANTE 19 MM", {("1000", "0001")}, status="01"),
         "DEMO-0007": Material("BROCA HSS 6 MM", {("1100", "0001")}),
         "DEMO-0008": Material("DISCO DE CORTE 4.5 PULG", {("1000", "0001")}),
         "DEMO-0009": Material("LIJA AL AGUA N 120", {("1000", "0001")}),
@@ -126,7 +128,7 @@ class SAPSimulado:
             return base | {"wnd[1]", campos.VISTAS_TABLA, campos.VISTA_DATOS_BASE_1, campos.VISTA_ALMACEN_1}
         if self.paso == ORG:
             return base | {"wnd[1]", campos.CENTRO, campos.ALMACEN}
-        if self.paso == DATOS and self.transaccion == "MM02":
+        if self.paso == DATOS and self.transaccion in {"MM02", "MM03"}:
             return base | {campos.DESCRIPCION, campos.STATUS_MATERIAL}
         if self.paso == AVISO:
             return base | {"wnd[1]"}
@@ -154,7 +156,7 @@ class SAPSimulado:
         destino = comando[2:].upper() if comando.lower().startswith("/n") else comando.upper()
         if destino == "":
             self.transaccion, self.paso = "SESSION_MANAGER", INICIO
-        elif destino in {"MM01", "MM02"}:
+        elif destino in {"MM01", "MM02", "MM03"}:
             self.transaccion, self.paso = destino, INICIAL
         else:
             self._msg("E", f"La transacción {destino} no existe")
@@ -175,6 +177,8 @@ class SAPSimulado:
                 self.paso = AVISO  # aparece una ventana que el script no conoce
             elif self.transaccion == "MM02" and m in self.bloqueados_por_otro:
                 self._msg("E", f"El material {m} está bloqueado por el usuario OTRO_USUARIO")
+            elif self.transaccion == "MM01" and self.materiales[m].status:
+                self._msg("E", f"El material {m} tiene status {self.materiales[m].status} (bloqueado): no se amplía")
             else:
                 self.paso = VISTAS
         elif self.paso == DATOS and self.transaccion == "MM02":
@@ -188,7 +192,7 @@ class SAPSimulado:
         if self.paso == VISTAS:
             if self.transaccion == "MM01" and campos.VISTA_ALMACEN_1 in self.marcados:
                 self.paso = ORG
-            elif self.transaccion == "MM02" and campos.VISTA_DATOS_BASE_1 in self.marcados:
+            elif self.transaccion in {"MM02", "MM03"} and campos.VISTA_DATOS_BASE_1 in self.marcados:
                 mat = self.materiales[m]
                 self.campos[campos.DESCRIPCION] = mat.descripcion
                 self.campos[campos.STATUS_MATERIAL] = mat.status
@@ -209,6 +213,9 @@ class SAPSimulado:
 
     def _grabar(self) -> None:
         m = self._material()
+        if self.transaccion == "MM03":
+            self._msg("E", "MM03 es solo de visualización: no se puede grabar")
+            return
         if self.paso != DATOS:
             self._msg("E", "No hay datos para grabar")
             return

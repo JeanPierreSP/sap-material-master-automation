@@ -16,6 +16,7 @@ class BloqueoMaterial(Tarea):
     descripcion = "Asigna el status de bloqueo indicado a cada material del archivo."
     transacciones = ("MM02",)
     columnas = ("MATERIAL", "STATUS")
+    avisar_status = False  # poner o cambiar el status es justamente el trabajo de esta tarea
 
     def ejecutar(self, pantalla: Pantalla, fila: Fila) -> str:
         material = fila["MATERIAL"].strip()
