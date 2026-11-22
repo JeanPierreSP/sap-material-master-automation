@@ -35,6 +35,7 @@ def ejecutar(
       la barra de avance) sin tener que leer el log.
     """
     avisar = al_terminar_fila or (lambda *_: None)
+    inesperada = False
     freno = freno or Freno()
     resumen = Resumen(total=len(filas))
     registro.info(f"Inicio: {tarea.nombre} · {len(filas)} filas")
@@ -73,6 +74,7 @@ def ejecutar(
             freno.detener(f"Pantalla inesperada en {clave}: {exc}")
             registro.info(f"[{i}/{len(filas)}] {clave}: ERROR · {exc}")
             avisar(i, clave, "error")
+            inesperada = True
             break
         except ErrorSAP as exc:
             resumen.errores += 1
@@ -89,6 +91,10 @@ def ejecutar(
         registro.info(f"[{i}/{len(filas)}] {clave}: OK · {mensaje}")
         avisar(i, clave, "ok")
 
+    # Al menú, para que la próxima corrida (o el paso siguiente de un flujo) encuentre SAP
+    # listo. Ante una pantalla inesperada no se toca nada: la persona tiene que verla.
+    if not inesperada:
+        _intentar_volver(pantalla)
     if al_avanzar:
         al_avanzar(resumen.procesadas, len(filas), "")
     resumen.detenido, resumen.motivo = freno.detenido, freno.motivo

@@ -162,9 +162,10 @@ QPushButton[variante="icono"] {{ background: transparent; border: none; padding:
 QPushButton[variante="icono"]:hover {{ background: {SUPERFICIE_2}; }}
 QPushButton[variante="segmento"] {{
     background: transparent; border: none; color: {TINTA_2}; padding: 6px 12px; border-radius: 6px;
+    font-weight: 600;
 }}
 QPushButton[variante="segmento"]:hover {{ background: {SUPERFICIE_2}; }}
-QPushButton[variante="segmento"]:checked {{ background: {MARCA_SUAVE}; color: {MARCA_FUERTE}; font-weight: 600; }}
+QPushButton[variante="segmento"]:checked {{ background: {MARCA_SUAVE}; color: {MARCA_FUERTE}; }}
 QFrame[rol="segmentos"] {{ background: {SUPERFICIE}; border: 1px solid {BORDE_CONTROL}; border-radius: {RADIO_CONTROL}px; }}
 
 /* Pestañas de procesos */

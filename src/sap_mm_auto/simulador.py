@@ -135,7 +135,10 @@ class SAPSimulado:
         return base
 
     def tecla(self, ventana: str, tecla: int) -> None:
-        if self.retardo:
+        # El retardo hace visible el avance de una corrida en la demostración. Las consultas
+        # (MM03) no lo llevan: la revisión previa tiene que sentirse inmediata.
+        consulta = self.transaccion == "MM03" or self.campos.get("wnd[0]/tbar[0]/okcd", "").upper().endswith("MM03")
+        if self.retardo and not consulta:
             time.sleep(self.retardo)
         if tecla == 11:
             self._grabar()

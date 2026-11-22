@@ -72,3 +72,15 @@ def test_avisa_el_resultado_de_cada_fila(pantalla, memoria, registro):
     vistos = []
     motor.ejecutar(tarea, entrada, pantalla, memoria, registro, al_terminar_fila=lambda *a: vistos.append(a))
     assert vistos == [(1, "DEMO-0001|1000|0002", "ok"), (2, "NO-EXISTE|1000|0002", "error"), (3, "DEMO-0002|1000|", "error")]
+
+
+def test_al_terminar_deja_sap_en_el_menu(sap, pantalla, memoria, registro):
+    motor.ejecutar(tarea, filas(("DEMO-0001", "1000", "0002")), pantalla, memoria, registro)
+    assert pantalla.esta_en_inicio()
+
+
+def test_ante_una_pantalla_inesperada_no_toca_sap(tmp_path):
+    sap = SAPSimulado(pantalla_inesperada={"DEMO-0001"})
+    p = Pantalla(sap)
+    motor.ejecutar(tarea, filas(("DEMO-0001", "1000", "0002")), p, MemoriaDiaria(tmp_path), Registro(tmp_path, "t"))
+    assert sap.paso == "aviso"  # queda la ventana que el script no conocía, a la vista

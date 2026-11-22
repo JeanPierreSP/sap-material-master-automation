@@ -136,6 +136,9 @@ class Ventana(QMainWindow):
         self.actual = ""
         self.corredor: Corredor | None = None
         self._tarea_en_curso: Tarea | None = None
+        # Procesos con el flujo automático prendido. Vive solo en memoria: se prende a
+        # conciencia en cada sesión, nunca queda guardado de una vez para otra.
+        self.flujos_automaticos: set[str] = set()
         self.barra.corrida.clicked.connect(self._volver_a_la_corrida)
 
         QShortcut(QKeySequence("Ctrl+K"), self, self.abrir_buscador)

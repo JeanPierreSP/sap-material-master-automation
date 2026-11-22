@@ -106,15 +106,11 @@ def revisar(
     pre = Precondiciones()
     archivo = Path(archivo)
 
-    existe = archivo.exists()
+    existe = archivo.is_file()  # una carpeta o una ruta vacía no sirven como entrada
     pre.agregar("Archivo de entrada", existe, str(archivo) if existe else "No existe")
 
-    bloqueo_excel = archivo.with_name("~$" + archivo.name)
-    pre.agregar(
-        "Archivo cerrado en Excel",
-        not bloqueo_excel.exists(),
-        "" if not bloqueo_excel.exists() else "Ciérralo antes de ejecutar",
-    )
+    abierto = bool(archivo.name) and archivo.with_name("~$" + archivo.name).exists()
+    pre.agregar("Archivo cerrado en Excel", not abierto, "Ciérralo antes de ejecutar" if abierto else "")
 
     if existe:
         presentes = {c.strip().upper() for c in leer_columnas(archivo)}
