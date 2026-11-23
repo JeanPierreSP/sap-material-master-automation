@@ -70,24 +70,42 @@ La interfaz solo habla con `Entorno`, que elige el SAP (real o simulado), revisa
 
 ## Probarlo sin SAP
 
+Necesitas Python 3.11 o más nuevo. Todos los comandos usan el Python del entorno virtual (`.venv`), así que no hace falta activarlo.
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/JeanPierreSP/sap-material-master-automation.git
+cd sap-material-master-automation
+py -m venv .venv                                   # o: python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[ui,dev]"
+
+# Interfaz de escritorio en modo demostración (SAP simulado e historial de ejemplo)
+.venv\Scripts\python -m sap_mm_auto.ui
+
+# Línea de comandos contra el SAP simulado
+.venv\Scripts\python -m sap_mm_auto tareas
+.venv\Scripts\python -m sap_mm_auto ejecutar ampliacion_almacen datos_ejemplo\ampliacion_almacen.csv --demo
+
+# Pruebas (la interfaz se prueba sin pantalla)
+.venv\Scripts\python -m pytest
+
+# Regrabar docs/demo.gif y docs/captura.png
+.venv\Scripts\python herramientas\grabar_demo.py
+```
+
+**Linux y macOS:**
+
 ```bash
 git clone https://github.com/JeanPierreSP/sap-material-master-automation.git
 cd sap-material-master-automation
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[ui,dev]"     # Linux/macOS: .venv/bin/python
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[ui,dev]"
 
-# Interfaz de escritorio en modo demostración (SAP simulado e historial de ejemplo)
-python -m sap_mm_auto.ui
-
-# Línea de comandos contra el SAP simulado
-sap-mm-auto tareas
-sap-mm-auto ejecutar ampliacion_almacen datos_ejemplo/ampliacion_almacen.csv --demo
-
-# Pruebas (la interfaz se prueba sin pantalla)
-python -m pytest
-
-# Regrabar docs/demo.gif y docs/captura.png
-python herramientas/grabar_demo.py
+.venv/bin/python -m sap_mm_auto.ui
+.venv/bin/python -m sap_mm_auto tareas
+.venv/bin/python -m sap_mm_auto ejecutar ampliacion_almacen datos_ejemplo/ampliacion_almacen.csv --demo
+.venv/bin/python -m pytest
 ```
 
 En la demostración, el archivo de ejemplo de la ampliación trae a propósito una fila incompleta, un material inexistente y uno bloqueado: la vista previa los avisa, la corrida los rechaza y el flujo automático se frena antes de ese paso.
@@ -95,10 +113,10 @@ En la demostración, el archivo de ejemplo de la ampliación trae a propósito u
 ## Usarlo con un SAP real
 
 1. Windows con SAP GUI y **SAP GUI Scripting habilitado** en el servidor y en el cliente.
-2. Instala la parte de Windows: `pip install -e ".[ui,windows]"`.
+2. Instala la parte de Windows: `.venv\Scripts\python -m pip install -e ".[ui,windows]"`.
 3. **Graba los IDs de tus pantallas** con el grabador de scripts de SAP GUI y reemplázalos en `src/sap_mm_auto/tareas/campos.py`. Los incluidos son de ejemplo: cada sistema puede tener otras subpantallas.
 4. Prueba primero en un **sistema de calidad**, con pocas filas.
-5. Abre SAP, deja la sesión en el menú inicial y ejecuta `python -m sap_mm_auto.ui --sap` (o la línea de comandos sin `--demo`). El programa pide confirmación antes de modificar nada.
+5. Abre SAP, deja la sesión en el menú inicial y ejecuta `.venv\Scripts\python -m sap_mm_auto.ui --sap` (o la línea de comandos sin `--demo`). El programa pide confirmación antes de modificar nada.
 
 ## Estructura
 
